@@ -6,6 +6,9 @@ import styles from './page.module.css';
 import { useChat } from 'ai/react';
 
 const Home: React.FC = () => {
+  // eslint-disable-next-line no-unused-vars
+  const [isWorkerLoading, setIsWorkerLoading] = useState(false);
+  const [searchInProgress, setSearchInProgress] = useState(false);
   const [searchIsLoading, setIsLoading] = useState(false);
   const [fileText, setFileText] = useState<string>('');
   const embeddingsWorkerRef = useRef<Worker | null>(null);
@@ -31,36 +34,48 @@ const Home: React.FC = () => {
     }
   }, [fileText]);
 
-  const handleSearch = (callback: { (results: any): void; (arg0: any): void; }) => {
-    setIsLoading(true);
-    embeddingsWorkerRef.current?.addEventListener('message', (event) => {
-      if (event.data.action === 'searchResults') {
-        callback(event.data.results);
-      }
-    });
-  
-    embeddingsWorkerRef.current?.postMessage({
-      action: 'searchSimilarDocuments',
-      query: input,
-      topK: 1
-    });
+  const handleSearch = () => {
+        return new Promise((resolve) => {
+            const handleMessage = (event: any) => {
+                if (event.data.action === 'searchResults') {
+                    embeddingsWorkerRef.current?.removeEventListener('message', handleMessage);
+                    setSearchInProgress(false);
+                    resolve(event.data.results);
+                }
+            };
+
+            embeddingsWorkerRef.current?.addEventListener('message', handleMessage);
+            embeddingsWorkerRef.current?.postMessage({
+                action: 'searchSimilarDocuments',
+                query: input,
+                topK: 1
+            });
+        });
   };
 
-  const modifiedHandleSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-  
-    handleSearch((results: any) => {
-      setIsLoading(false);
-      const serializedResults = JSON.stringify(results);
-  
-      const chatRequestOptions = {
-        data: { vectorStoreResults: serializedResults },
-      };
-  
-      handleSubmit(e, chatRequestOptions);
-    });
+  const modifiedHandleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+        e.preventDefault();
+
+        if (input.trim() === '' || searchInProgress) {
+            return; // Prevent empty submissions or when a search is already in progress
+        }
+
+        setSearchInProgress(true);
+
+        try {
+            const results = await handleSearch();
+            const serializedResults = JSON.stringify(results);
+
+            const chatRequestOptions = {
+                data: { vectorStoreResults: serializedResults },
+            };
+        
+            handleSubmit(e, chatRequestOptions);
+        } catch (error) {
+            console.error('Error during search:', error);
+            setSearchInProgress(false);
+        }
   };
-  
 
   return (
     <main className={styles.main}>
