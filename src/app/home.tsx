@@ -6,11 +6,10 @@ import styles from './page.module.css';
 import { useChat } from 'ai/react';
 
 const Home: React.FC = () => {
-  // eslint-disable-next-line no-unused-vars
-  const [isWorkerLoading, setIsWorkerLoading] = useState(false);
-  const [searchInProgress, setSearchInProgress] = useState(false);
   const [searchIsLoading, setIsLoading] = useState(false);
   const [fileText, setFileText] = useState<string>('');
+  const [fileName, setFileName] = useState<string>('');
+  const [documents, setDocuments] = useState<{ name: string; text: string; }[]>([]);
   const embeddingsWorkerRef = useRef<Worker | null>(null);
   const { isLoading, messages, input, handleInputChange, handleSubmit } = useChat();
 
@@ -19,6 +18,14 @@ const Home: React.FC = () => {
   
     const EmbeddingsWorker = require('worker-loader!../components/embeddingsWorker.js').default;
     embeddingsWorkerRef.current = new EmbeddingsWorker();
+
+    if (embeddingsWorkerRef.current) {
+      embeddingsWorkerRef.current.addEventListener('message', (event) => {
+        if (event.data.action === 'documentsList') {
+          setDocuments(event.data.documents);
+        }
+      });
+    }
   
     return () => {
       embeddingsWorkerRef.current?.terminate();
@@ -29,52 +36,58 @@ const Home: React.FC = () => {
     if (fileText && embeddingsWorkerRef.current) {
       embeddingsWorkerRef.current.postMessage({
         action: 'addDocumentsToStore',
-        documents: [fileText]
+        documents: [{ text: fileText, name: fileName }]
       });
     }
-  }, [fileText]);
+  }, [fileText, fileName]);
 
-  const handleSearch = () => {
-        return new Promise((resolve) => {
-            const handleMessage = (event: any) => {
-                if (event.data.action === 'searchResults') {
-                    embeddingsWorkerRef.current?.removeEventListener('message', handleMessage);
-                    setSearchInProgress(false);
-                    resolve(event.data.results);
-                }
-            };
+  useEffect(() => {
+    if (embeddingsWorkerRef.current) {
+      embeddingsWorkerRef.current.postMessage({
+        action: 'listDocuments'
+      });
+    }
+  }, []);
 
-            embeddingsWorkerRef.current?.addEventListener('message', handleMessage);
-            embeddingsWorkerRef.current?.postMessage({
-                action: 'searchSimilarDocuments',
-                query: input,
-                topK: 1
-            });
-        });
+  const handleSearch = (callback: (results: any) => void) => {
+    setIsLoading(true);
+    if (embeddingsWorkerRef.current) {
+      embeddingsWorkerRef.current.addEventListener('message', (event) => {
+        if (event.data.action === 'searchResults') {
+          callback(event.data.results);
+        }
+      });
+
+      embeddingsWorkerRef.current.postMessage({
+        action: 'searchSimilarDocuments',
+        query: input,
+        topK: 1
+      });
+    }
   };
 
-  const modifiedHandleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
+  const modifiedHandleSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+  
+    handleSearch((results: any) => {
+      setIsLoading(false);
+      const serializedResults = JSON.stringify(results);
+  
+      const chatRequestOptions = {
+        data: { vectorStoreResults: serializedResults },
+      };
+  
+      handleSubmit(e, chatRequestOptions);
+    });
+  };
 
-        if (input.trim() === '' || searchInProgress) {
-            return; // Prevent empty submissions or when a search is already in progress
-        }
-
-        setSearchInProgress(true);
-
-        try {
-            const results = await handleSearch();
-            const serializedResults = JSON.stringify(results);
-
-            const chatRequestOptions = {
-                data: { vectorStoreResults: serializedResults },
-            };
-        
-            handleSubmit(e, chatRequestOptions);
-        } catch (error) {
-            console.error('Error during search:', error);
-            setSearchInProgress(false);
-        }
+  const handleDocumentSelect = (name: string) => {
+    if (embeddingsWorkerRef.current) {
+      embeddingsWorkerRef.current.postMessage({
+        action: 'getDocumentsByDocId',
+        docId: name
+      });
+    }
   };
 
   return (
@@ -83,7 +96,7 @@ const Home: React.FC = () => {
         <p>
           Upload a PDF or text file to start the analysis.
         </p>
-        <FileLoader setFileText={setFileText} />
+        <FileLoader setFileText={setFileText} setFileName={setFileName} />
       </div>
 
       {fileText && (
@@ -92,7 +105,7 @@ const Home: React.FC = () => {
         </div>
       )}
 
-      {isLoading || searchIsLoading && (
+      {(isLoading || searchIsLoading) && (
         <div className={styles.spinner}>
             <div>...</div>
         </div>
@@ -119,6 +132,16 @@ const Home: React.FC = () => {
         </form>
       </div>
 
+      <div className={styles.documentList}>
+        <h3>Available Documents</h3>
+        <ul>
+          {documents.map((doc) => (
+            <li key={doc.name} onClick={() => handleDocumentSelect(doc.name)}>
+              {doc.name}
+            </li>
+          ))}
+        </ul>
+      </div>
     </main>
   );
 }

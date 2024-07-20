@@ -11,13 +11,13 @@ export async function POST(req: Request) {
     const { messages, data } = await req.json();
     const vectorStoreResultsString = data.vectorStoreResults;
 
-    const previousMessages = messages.slice(0, -1).map((message) => {
+    const previousMessages = messages.slice(0, -1).map((message: any) => {
         return message.role === "user" ? `User: ${message.content}\n` : `Assistant: ${message.content}\n`;
     }).join("");
     const lastMessage = messages[messages.length - 1]?.content || 'No message found';
 
     const response = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo-1106",
+        model: "gpt-4o-mini",
         stream: true,
         messages: [
           {

@@ -9,9 +9,10 @@ PDFJS.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pd
 
 interface FileLoaderProps {
   setFileText: (text: string) => void;
+  setFileName: (name: string) => void;
 }
 
-export const FileLoader: React.FC<FileLoaderProps> = ({ setFileText }) => {
+export const FileLoader: React.FC<FileLoaderProps> = ({ setFileName, setFileText }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   // Handle file processing
@@ -44,9 +45,12 @@ export const FileLoader: React.FC<FileLoaderProps> = ({ setFileText }) => {
   }, [selectedFile, setFileText]);
 
   // Handle file selection
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files) {
-      setSelectedFile(event.target.files[0]);
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      const text = await file.text();
+      setFileText(text);
+      setFileName(file.name);
     }
   };
 

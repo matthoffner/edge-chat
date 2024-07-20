@@ -12,6 +12,7 @@
     "@xenova/transformers": "^2.14.0",
     "ai": "^2.2.31",
     "critters": "^0.0.20",
+    "idb": "^8.0.0",
     "next": "14.0.3",
     "openai": "^4.24.7",
     "pdfjs-dist": "^3.7.107",
